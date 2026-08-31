@@ -1,23 +1,30 @@
-import os
+from pathlib import Path
 from operator import itemgetter
 
 from dotenv import load_dotenv
+from langchain_chroma import Chroma
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_pinecone import PineconeVectorStore
+from langchain_groq import ChatGroq
+from langchain_huggingface import HuggingFaceEmbeddings
 
 load_dotenv()
 
 print("Initializing components...")
 
-embeddings = OpenAIEmbeddings()
-llm = ChatOpenAI()
+PROJECT_ROOT = Path(__file__).resolve().parent
+CHROMA_DIR = PROJECT_ROOT / "chroma_db"
+COLLECTION_NAME = "rag-gist"
 
-vectorstore = PineconeVectorStore(
-    index_name=os.environ["INDEX_NAME"], embedding=embeddings
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+llm = ChatGroq(model="llama-3.3-70b-versatile")
+
+vectorstore = Chroma(
+    persist_directory=str(CHROMA_DIR),
+    embedding_function=embeddings,
+    collection_name=COLLECTION_NAME,
 )
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})

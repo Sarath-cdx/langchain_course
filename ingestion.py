@@ -1,16 +1,21 @@
-import os
+from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_unstructured import UnstructuredLoader
-from langchain_openai import OpenAIEmbeddings
-from langchain_pinecone import PineconeVectorStore
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import TextLoader
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import CharacterTextSplitter
 
 load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+DATA_PATH = PROJECT_ROOT / "mediumblog1.txt"
+CHROMA_DIR = PROJECT_ROOT / "chroma_db"
+COLLECTION_NAME = "rag-gist"
+
 if __name__ == "__main__":
     print("Ingesting...")
-    loader = UnstructuredLoader(file_path="/Users/edenmarco/GithubProjects/langchain-course/mediumblog1.txt", chunking_strategy="basic", max_characters=1000000)
+    loader = TextLoader(str(DATA_PATH))
     document = loader.load()
 
     print("splitting...")
@@ -18,10 +23,13 @@ if __name__ == "__main__":
     texts = text_splitter.split_documents(document)
     print(f"created {len(texts)} chunks")
 
-    embeddings = OpenAIEmbeddings(openai_api_key=os.environ.get("OPENAI_API_KEY"))
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     print("ingesting...")
-    PineconeVectorStore.from_documents(
-        texts, embeddings, index_name=os.environ["INDEX_NAME"]
+    Chroma.from_documents(
+        texts,
+        embeddings,
+        persist_directory=str(CHROMA_DIR),
+        collection_name=COLLECTION_NAME,
     )
     print("finish")
