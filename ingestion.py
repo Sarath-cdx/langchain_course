@@ -1,35 +1,65 @@
-from pathlib import Path
+# import os
+
+# from dotenv import load_dotenv
+# from langchain_unstructured import UnstructuredLoader
+# from langchain_openai import OpenAIEmbeddings
+# from langchain_pinecone import PineconeVectorStore
+# from langchain_text_splitters import CharacterTextSplitter
+
+# load_dotenv()
+
+
+# if __name__ == "__main__":
+#     print("Ingesting...")
+#     loader = UnstructuredLoader("~/Desktop/langchain-course/mediumblog1.txt,chucking_strategy='basic'",max_characters=100000)
+#     docment = loader.load()
+
+#     print(f"Splilitting...")
+#     text_spilter=CharacterTextSplitter(chunk_size=1000,chunk_overlap=0)
+#     text=text_spilter.documents(docment)
+#     print(f"creatded {len(text)} chunks")
+
+import os
 
 from dotenv import load_dotenv
-from langchain_chroma import Chroma
-from langchain_community.document_loaders import TextLoader
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_unstructured import UnstructuredLoader
+from langchain_openai import OpenAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
 from langchain_text_splitters import CharacterTextSplitter
+from langchain_google_genai import GoogleGenerativeAIEmbeddings 
 
 load_dotenv()
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-DATA_PATH = PROJECT_ROOT / "mediumblog1.txt"
-CHROMA_DIR = PROJECT_ROOT / "chroma_db"
-COLLECTION_NAME = "rag-gist"
-
 if __name__ == "__main__":
     print("Ingesting...")
-    loader = TextLoader(str(DATA_PATH))
+
+    loader = UnstructuredLoader(
+        os.path.expanduser("~/Desktop/langchain-course/mediumblog1.txt"),
+        chunking_strategy="basic",
+        max_characters=100000
+    )
+
     document = loader.load()
 
-    print("splitting...")
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-    texts = text_splitter.split_documents(document)
-    print(f"created {len(texts)} chunks")
+    print("Splitting...")
 
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
-    print("ingesting...")
-    Chroma.from_documents(
-        texts,
-        embeddings,
-        persist_directory=str(CHROMA_DIR),
-        collection_name=COLLECTION_NAME,
+    text_splitter = CharacterTextSplitter(
+        chunk_size=1500,
+        chunk_overlap=0
     )
-    print("finish")
+
+    text = text_splitter.split_documents(document)
+
+    # print(f"Created {len(text)} chunks")
+    # for i, chunk in enumerate(text):
+    #     print(f"\n--- CHUNK {i+1} ---")
+    #     print(chunk.page_content)
+    embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+    print(".......")
+    vectorstore = PineconeVectorStore.from_documents(
+    text,
+    embeddings,
+    index_name=os.environ["INDEX_NAME"],
+)
+     
+    print("finished....")

@@ -1,34 +1,24 @@
-from pathlib import Path
-from operator import itemgetter
+import os
 
-from dotenv import load_dotenv
-from langchain_chroma import Chroma
-from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
-from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
+from dotenv import load_dotenv
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_ollama import ChatOllama
+from langchain_pinecone import PineconeVectorStore
+from operator import itemgetter
 
 load_dotenv()
 
-print("Initializing components...")
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+llm = ChatOllama(model="qwen3:1.7b", base_url="http://localhost:11434")
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-CHROMA_DIR = PROJECT_ROOT / "chroma_db"
-COLLECTION_NAME = "rag-gist"
-
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-llm = ChatGroq(model="llama-3.3-70b-versatile")
-
-vectorstore = Chroma(
-    persist_directory=str(CHROMA_DIR),
-    embedding_function=embeddings,
-    collection_name=COLLECTION_NAME,
+vectorstore = PineconeVectorStore(
+    index_name=os.getenv("INDEX_NAME"),
+    embedding=embeddings,
 )
-
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-
 prompt_template = ChatPromptTemplate.from_template(
     """Answer the question based only on the following context:
 
@@ -45,14 +35,13 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
-# ============================================================================
-# IMPLEMENTATION 1: Without LCEL (Simple Function-Based Approach)
-# ============================================================================
-def retrieval_chain_without_lcel(query: str):
-    """
-    Simple retrieval chain without LCEL.
-    Manually retrieves documents, formats them, and generates a response.
-
+# IMPLEMENTATION 1: Without LCEL
+# ================================================
+#  without lcel :langchain expression language
+def retreival_chain_without_lcel(query:str):
+    """ 
+    Simple retrieval chain wihtout LECL 
+    Manually retrevies Docs,fromat them,and generate an response
     Limitations:
     - Manual step-by-step execution
     - No built-in streaming support
@@ -60,26 +49,20 @@ def retrieval_chain_without_lcel(query: str):
     - Harder to compose with other chains
     - More verbose and error-prone
     """
-    # Step 1: Retrieve relevant documents
-    docs = retriever.invoke(query)
-
-    # Step 2: Format documents into context string
-    context = format_docs(docs)
-
-    # Step 3: Format the prompt with context and question
-    messages = prompt_template.format_messages(context=context, question=query)
-
-    # Step 4: Invoke LLM with the formatted messages
-    response = llm.invoke(messages)
-
-    # Step 5: Return the content
-    return response.content
+    # retrieve relevant docs
+    docs=retriever.invoke(query)
+    # format docs into a context string
+    context=format_docs(docs)
+    # format the prompt and context and question
+    message=prompt_template.format_messages(context=context,question=query)
+    # invoke the llm
+    response=llm.invoke(message)
 
 
-# ============================================================================
-# IMPLEMENTATION 2: With LCEL (LangChain Expression Language) - BETTER APPROACH
-# ============================================================================
-def create_retrieval_chain_with_lcel():
+# ================================================
+# IMPLEMENTATION 2: Using LCEL
+# ================================================
+def retreival_chain_with_lcel(query:str):
     """
     Create a retrieval chain using LCEL (LangChain Expression Language).
     Returns a chain that can be invoked with {"question": "..."}
@@ -94,58 +77,111 @@ def create_retrieval_chain_with_lcel():
     - Reusable: Chain can be saved, shared, and composed with other chains
     - Better debugging: LangChain provides better observability tools
     """
-    retrieval_chain = (
+    # idhi same working from the kindha unna flow chat laga run avuthundhi
+    retrieval_chain=(
         RunnablePassthrough.assign(
             context=itemgetter("question") | retriever | format_docs
         )
-        | prompt_template
-        | llm
+        |prompt_template 
+        | llm 
         | StrOutputParser()
     )
     return retrieval_chain
-
-
+    
 if __name__ == "__main__":
-    print("Retrieving...")
+    print("retrieving..")
 
-    # Query
     query = "what is Pinecone in machine learning?"
 
-    # ========================================================================
-    # Option 0: Raw invocation without RAG
-    # ========================================================================
+# -----------
+# option 0: raw invocation without rag
+# -----------
     print("\n" + "=" * 70)
-    print("IMPLEMENTATION 0: Raw LLM Invocation (No RAG)")
+    print("printing raw llm invocation without rag")
     print("=" * 70)
-    result_raw = llm.invoke([HumanMessage(content=query)])
-    print("\nAnswer:")
+    result_raw = llm.invoke(query)
+    print("\nAnswer")
     print(result_raw.content)
 
-    # ========================================================================
-    # Option 1: Use implementation WITHOUT LCEL
-    # ========================================================================
+# ----------
+# option 1:using the impelmentation without LCEL
+# ----------
     print("\n" + "=" * 70)
     print("IMPLEMENTATION 1: Without LCEL")
     print("=" * 70)
-    result_without_lcel = retrieval_chain_without_lcel(query)
+    result_without_lcel = retreival_chain_without_lcel(query)
     print("\nAnswer:")
     print(result_without_lcel)
 
-    # ========================================================================
-    # Option 2: Use implementation WITH LCEL (Better Approach)
-    # ========================================================================
+#----------
+# option 2:using the impelmentation with LCEL
+#----------
     print("\n" + "=" * 70)
-    print("IMPLEMENTATION 2: With LCEL - Better Approach")
+    print("IMPLEMENTATION 2: With LCEL")
     print("=" * 70)
-    print("Why LCEL is better:")
-    print("- More concise and declarative")
-    print("- Built-in streaming: chain.stream()")
-    print("- Built-in async: chain.ainvoke()")
-    print("- Easy to compose with other chains")
-    print("- Better for production use")
-    print("=" * 70)
-
     chain_with_lcel = create_retrieval_chain_with_lcel()
     result_with_lcel = chain_with_lcel.invoke({"question": query})
     print("\nAnswer:")
     print(result_with_lcel)
+
+
+
+
+
+
+
+#   print("\n" + "=" * 70)
+#     print("IMPLEMENTATION 2: With LCEL - Better Approach")
+#     print("=" * 70)
+#     print("Why LCEL is better:")
+#     print("- More concise and declarative")
+#     print("- Built-in streaming: chain.stream()")
+#     print("- Built-in async: chain.ainvoke()")
+#     print("- Easy to compose with other chains")
+#     print("- Better for production use")
+#     print("=" * 70)
+
+
+    #                 USER QUESTION
+    #                       │
+    #                       ▼
+    #           {"question": "..."}
+    #                       │
+    #                       ▼
+    #         RunnablePassthrough.assign
+    #                       │
+    #          ┌────────────┴────────────┐
+    #          │                         │
+    #          ▼                         │
+    #  itemgetter("question")            │
+    #          │                         │
+    #          ▼                         │
+    #      retriever                     │
+    #          │                         │
+    #          ▼                         │
+    #   [Document, Document, ...]        │
+    #          │                         │
+    #          ▼                         │
+    #     format_docs                    │
+    #          │                         │
+    #          ▼                         │
+    #       context                     │
+    #          │                         │
+    #          └────────────┬────────────┘
+    #                       ▼
+    #          {
+    #            question: "...",
+    #            context: "..."
+    #          }
+    #                       │
+    #                       ▼
+    #               prompt_template
+    #                       │
+    #                       ▼
+    #                      LLM
+    #                       │
+    #                       ▼
+    #               StrOutputParser
+    #                       │
+    #                       ▼
+    #                FINAL STRING
